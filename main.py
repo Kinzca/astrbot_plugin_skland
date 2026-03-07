@@ -212,7 +212,7 @@ class SklandPlugin(Star):
                 "1. 登录 鹰角网络通行证 后，打开 (https://web-api.hypergryph.com/account/info/hg) 记下 content 字段的值（推荐）。\n"
                 "   或者登录 森空岛网页版 (https://www.skland.com/) 后，\n"
                 "   打开 (https://web-api.skland.com/account/info/hg) 记下 content 字段的值。\n"
-                "   content字段示例，请复制类似这样的段落：N6QKb2C3d4E5/A1b2C3d4"
+                "   请复制类似这样的段落，content字段示例：N6QKb2C3d4E5/A1b2C3d4\n"
                 "2. 使用方法:\n"
                 "   /skdlogin <content>")
             return
