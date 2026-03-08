@@ -285,16 +285,13 @@ class SklandPlugin(Star):
                     continue
                 try:
                     results, nickname = await self.api.do_full_sign_in(user_data["token"])
-                    logger.info(self.get_kv_data("users", {}))
                     # 滚动更新昵称，每次将发送者昵称更新到用户数据中，确保昵称是最新的
-                    if user_id in str(users_data.get("umo")):
-                        # 当用户名不一致则更新
-                        if user_name != user_data.get("last_username"):
-                            await self.put_kv_data("users", {**(await self.get_kv_data("users", {})), user_id: {"last_username": nickname}})
+                    if uid == user_id and user_name != user_data.get("last_username"):
+                        user_data["last_username"] = user_name
                     
                     # 如果配置不显示玩家名称，或者昵称获取为空，则使用QQ昵称显示
-                    if nickname == None or nickname.strip() == "" or not self.config.get("show_player_name", True):
-                        nickname = user_data.get("last_username").strip() or "(未知)"
+                    if not nickname or not nickname.strip() or not self.config.get("show_player_name", True):
+                        nickname = (user_data.get("last_username") or "(未知)").strip()
                     
                     user_data["nickname"] = nickname
                     for r in results:
@@ -308,7 +305,8 @@ class SklandPlugin(Star):
                     ak_icon = "✅" if user_data.get("last_sign", {}).get("arknights") else "❌"
                     ef_icon = "✅" if user_data.get("last_sign", {}).get("endfield") else "❌"
                     message_lines.append(f" {ak_icon} | {ef_icon} | {nickname}")
-                except:
+                except Exception as e:
+                    logger.error(f"用户 {uid} 签到失败: {e}")
                     message_lines.append(" ⚠️ | ⚠️ | (Error)")
             await self.put_kv_data("users", users_data)
             yield event.plain_result("\n".join(message_lines))
