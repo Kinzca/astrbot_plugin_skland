@@ -6,10 +6,26 @@
 
 ## 功能
 
-- **skd** (群聊): 查看群内所有绑定用户的签到状态
-- **skd** (私聊): 查看自己的签到状态
-- **skdlogin** (私聊): 使用 token 登录并立即签到
-- **skdlogout** (私聊): 登出并移除 token
+- **skd** (群聊):        查看群内所有绑定用户的签到状态
+- **skd** (私聊):        查看自己的签到状态
+- **skdlogin** (私聊):   使用 token 登录并立即签到
+- **skdlogout** (私聊):  登出并移除 token
+- **skdusers** (全部):   查询用户统计，普通用户仅显示签到人数和名额
+
+## 使用
+
+### 获取 Token
+
+1. 登录 [森空岛](https://www.skland.com/)
+2. 访问 [森空岛/account/info/hg](https://web-api.skland.com/account/info/hg)
+3. 找到返回的 JSON 中的 `{"content":"XXX"}`
+4. 复制 `XXX` 部分
+
+### 登录与签到
+
+1. 私聊发送 `/skdlogin XXX` 进行登录
+2. 登录成功后会自动执行一次签到
+3. 之后可以发送 `/skd` 查看签到状态
 
 ## 安装
 
@@ -29,21 +45,6 @@ git clone https://github.com/Azincc/astrbot_plugin_skland.git
 ## 依赖
 
 插件依赖已在 `requirements.txt` 中列出，AstrBot 会自动安装。
-
-## 使用
-
-### 获取 Token
-
-1. 登录 [森空岛](https://www.skland.com/)
-2. 访问 https://web-api.skland.com/account/info/hg
-3. 找到返回的 JSON 中的 `{"content":"XXX"}`
-4. 复制 `XXX` 部分（这就是你的 token）
-
-### 登录与签到
-
-1. 私聊发送 `/skdlogin <token>` 进行登录（将 `<token>` 替换为上面获取的 XXX）
-2. 登录成功后会自动执行一次签到
-3. 之后可以发送 `/skd` 查看签到状态
 
 ## 许可
 
