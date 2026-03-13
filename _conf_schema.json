@@ -14,8 +14,8 @@
   "auto_sign_hour": {
     "description": "自动签到时间（小时）",
     "type": "int",
-    "default": 1,
-    "hint": "自动签到执行的小时（0-23），默认凌晨1点"
+    "default": 9,
+    "hint": "自动签到执行的小时（0-23），默认凌晨9点"
   },
   "auto_sign_delay": {
     "description": "自动签到的延迟，防止风控",
