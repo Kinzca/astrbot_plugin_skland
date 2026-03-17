@@ -317,7 +317,7 @@ class SklandAPI:
         self, token: str, path: str, body_or_query: str, did: str
     ) -> tuple[str, dict]:
         """Generate request signature"""
-        timestamp = int(time.time())
+        timestamp = int(time.time()) - 2
         header_ca = {
             "platform": "3",
             "timestamp": str(timestamp),
