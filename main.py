@@ -270,11 +270,14 @@ class SklandPlugin(Star):
                 message = f"🎮 森空岛自动签到结果\n\n{self._format_sign_status(results, nickname)}"
                 await self._send_private_message(user_id, user_data, message)
                 users[user_id] = user_data
-                if self._has_failed_result(results):
+                if self._has_failed_group_report_result(results):
                     failed_users += 1
-                else:
+                elif self._has_group_reportable_result(results):
                     success_users += 1
-                group_report_rows.append(self._format_group_report_row(display_name, results))
+
+                group_report_row = self._format_group_report_row(display_name, results)
+                if group_report_row:
+                    group_report_rows.append(group_report_row)
                 logger.info(f"用户 {user_id} ({nickname}) 自动签到完成")
             except Exception as e:
                 logger.error(f"用户 {user_id} 自动签到失败: {e}")
@@ -373,13 +376,42 @@ class SklandPlugin(Star):
             return True
         return any(not (r.success or self._is_signed_today(r)) for r in results)
 
+    def _is_missing_game_data_result(self, result) -> bool:
+        if result.success or self._is_signed_today(result):
+            return False
+
+        error = str(getattr(result, "error", "") or "").strip().lower()
+        return any(
+            keyword in error
+            for keyword in [
+                "没有角色数据",
+                "无角色数据",
+                "暂无角色数据",
+                "no role",
+                "no character",
+            ]
+        )
+
+    def _group_report_results(self, results: list) -> list:
+        return [r for r in results if not self._is_missing_game_data_result(r)]
+
+    def _has_group_reportable_result(self, results: list) -> bool:
+        return bool(self._group_report_results(results))
+
+    def _has_failed_group_report_result(self, results: list) -> bool:
+        reportable_results = self._group_report_results(results)
+        if not reportable_results:
+            return False
+        return any(not (r.success or self._is_signed_today(r)) for r in reportable_results)
+
     def _format_group_report_row(self, nickname: str, results: list) -> str:
-        if not results:
-            return f"⚠️ {nickname}: 没有绑定游戏"
+        reportable_results = self._group_report_results(results)
+        if not reportable_results:
+            return ""
 
         parts = []
         has_failed = False
-        for r in results:
+        for r in reportable_results:
             ok = r.success or self._is_signed_today(r)
             has_failed = has_failed or not ok
             game_name = "方舟" if r.game == "明日方舟" else "终末" if r.game == "终末地" else r.game
