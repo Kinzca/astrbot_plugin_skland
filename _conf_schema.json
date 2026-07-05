@@ -28,5 +28,41 @@
     "type": "int",
     "default": 10,
     "hint": "将限制登录账户的数量，0为不限制"
+  },
+  "allowed_group_ids": {
+    "description": "允许响应群聊命令的群号",
+    "type": "string",
+    "default": "759775061",
+    "hint": "多个群号用英文逗号分隔；留空表示不限制。当前只允许明日方舟群 759775061"
+  },
+  "auto_sign_group_report_enabled": {
+    "description": "自动签到后群内汇报",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，每天自动签到完成会在指定群聊发送汇总，详细结果仍私聊本人"
+  },
+  "auto_sign_report_group_ids": {
+    "description": "自动签到汇报群号",
+    "type": "string",
+    "default": "759775061",
+    "hint": "多个群号用英文逗号分隔；留空时使用允许响应的群号"
+  },
+  "auto_sign_report_platform_id": {
+    "description": "自动签到汇报平台ID",
+    "type": "string",
+    "default": "qq-test",
+    "hint": "当前 OneBot 平台 ID 为 qq-test，一般不需要修改"
+  },
+  "auto_sign_group_report_show_details": {
+    "description": "自动签到群汇报显示个人明细",
+    "type": "bool",
+    "default": false,
+    "hint": "关闭时群里只显示人数汇总，具体签到结果私聊本人；开启后群里会列出昵称和签到状态"
+  },
+  "auto_sign_group_report_tip": {
+    "description": "自动签到群汇报提示",
+    "type": "string",
+    "default": "输入 /skdhelp 获取帮助",
+    "hint": "每天签到汇总末尾附带的一句话提示"
   }
 }

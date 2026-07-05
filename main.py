@@ -14,6 +14,12 @@ Config (AstrBot plugin config):
 - show_player_name: 显示玩家昵称（否则显示QQ昵称）
 - auto_sign_delay: 签到延时
 - max_users: 最大用户数量
+- allowed_group_ids: 允许响应群聊命令的群号，多个群号用逗号分隔，留空表示不限制
+- auto_sign_group_report_enabled: 自动签到后是否群内汇报
+- auto_sign_report_group_ids: 自动签到结果汇报群号，多个群号用逗号分隔
+- auto_sign_report_platform_id: 自动签到结果汇报使用的平台 ID
+- auto_sign_group_report_show_details: 自动签到群内汇报是否显示个人明细
+- auto_sign_group_report_tip: 自动签到群内汇报末尾提示
 """
 
 from datetime import datetime
@@ -80,6 +86,48 @@ class SklandPlugin(Star):
             value=10,
             description="允许绑定的最大用户数量，0表示无限制"
         )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="允许响应的群号",
+            key="allowed_group_ids",
+            value="759775061",
+            description="多个群号用英文逗号分隔；留空表示不限制群聊命令"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="自动签到后群内汇报",
+            key="auto_sign_group_report_enabled",
+            value=True,
+            description="开启后，自动签到完成会在指定群聊发送汇总，详细结果仍私聊本人"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="自动签到汇报群号",
+            key="auto_sign_report_group_ids",
+            value="759775061",
+            description="多个群号用英文逗号分隔；留空时使用允许响应的群号"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="自动签到汇报平台ID",
+            key="auto_sign_report_platform_id",
+            value="qq-test",
+            description="AstrBot 平台配置 ID；当前 OneBot 平台为 qq-test"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="自动签到群汇报显示明细",
+            key="auto_sign_group_report_show_details",
+            value=False,
+            description="关闭时群内只显示人数汇总，个人详细结果只私聊本人"
+        )
+        put_config(
+            namespace=PLUGIN_NAME,
+            name="自动签到群汇报提示",
+            key="auto_sign_group_report_tip",
+            value="输入 /skdhelp 获取帮助",
+            description="自动签到群内汇报末尾附带的提示语"
+        )
 
     def _get_config(self) -> dict:
         """获取当前配置"""
@@ -89,7 +137,56 @@ class SklandPlugin(Star):
             "show_player_name": self.config.get("show_player_name", True),
             "auto_sign_delay": self.config.get("auto_sign_delay", 10),
             "max_users": self.config.get("max_users", 10),
+            "allowed_group_ids": self.config.get("allowed_group_ids", "759775061"),
+            "auto_sign_group_report_enabled": self.config.get("auto_sign_group_report_enabled", True),
+            "auto_sign_report_group_ids": self.config.get("auto_sign_report_group_ids", "759775061"),
+            "auto_sign_report_platform_id": self.config.get("auto_sign_report_platform_id", "qq-test"),
+            "auto_sign_group_report_show_details": self.config.get("auto_sign_group_report_show_details", False),
+            "auto_sign_group_report_tip": self.config.get(
+                "auto_sign_group_report_tip",
+                "输入 /skdhelp 获取帮助",
+            ),
         }
+
+    def _normalize_group_ids(self, value) -> set[str]:
+        if value is None:
+            return set()
+        if isinstance(value, str):
+            parts = value.replace("，", ",").split(",")
+        elif isinstance(value, (list, tuple, set)):
+            parts = value
+        else:
+            parts = [value]
+        return {str(part).strip() for part in parts if str(part).strip()}
+
+    def _group_command_allowed(self, group_id) -> bool:
+        allowed_group_ids = self._normalize_group_ids(
+            self._get_config().get("allowed_group_ids", "759775061")
+        )
+        if not group_id or not allowed_group_ids:
+            return True
+        return str(group_id).strip() in allowed_group_ids
+
+    def _log_blocked_group(self, command_name: str, group_id):
+        logger.info(f"森空岛命令 {command_name} 已在未授权群 {group_id} 中忽略")
+
+    def _get_help_text(self) -> str:
+        return (
+            "———获取 Token————\n"
+            "1、登录 https://www.skland.com/\n"
+            "2、访问 https://web-api.skland.com/account/info/hg\n"
+            "3、找到返回的 JSON 中的 {\"content\":\"XXX\"}\n"
+            "4、复制 XXX 部分\n"
+            "———登录与签到———\n"
+            "1、私聊发送 /skdlogin XXX 进行登录\n"
+            "2、登录成功后会自动执行一次签到\n"
+            "3、之后可以发送 /skd 查看签到状态\n"
+            "————————————"
+        )
+
+    def _get_display_name(self, user_id: str, user_data: dict, nickname: str = "") -> str:
+        name = nickname or user_data.get("nickname") or user_data.get("last_username") or user_id
+        return str(name).strip() or str(user_id)
 
     async def initialize(self):
         """插件初始化"""
@@ -142,6 +239,9 @@ class SklandPlugin(Star):
         
         # 自动签到的最大随机延时时间
         max_delay = config.get("auto_sign_delay", 10)
+        group_report_rows = []
+        success_users = 0
+        failed_users = 0
 
         for user_id, user_data in users.items():
             # 随机延时的核心代码
@@ -153,9 +253,11 @@ class SklandPlugin(Star):
             if "token" not in user_data:
                 continue
 
+            display_name = self._get_display_name(user_id, user_data)
             try:
                 token = user_data["token"]
                 results, nickname = await self.api.do_full_sign_in(token)
+                display_name = self._get_display_name(user_id, user_data, nickname)
 
                 # 更新签到状态
                 for r in results:
@@ -168,13 +270,21 @@ class SklandPlugin(Star):
                 message = f"🎮 森空岛自动签到结果\n\n{self._format_sign_status(results, nickname)}"
                 await self._send_private_message(user_id, user_data, message)
                 users[user_id] = user_data
+                if self._has_failed_result(results):
+                    failed_users += 1
+                else:
+                    success_users += 1
+                group_report_rows.append(self._format_group_report_row(display_name, results))
                 logger.info(f"用户 {user_id} ({nickname}) 自动签到完成")
             except Exception as e:
                 logger.error(f"用户 {user_id} 自动签到失败: {e}")
                 message = f"⚠️ 自动签到失败\n错误: {str(e)}\n请使用 /skdlogin 重新登录"
                 await self._send_private_message(user_id, user_data, message)
+                failed_users += 1
+                group_report_rows.append(f"⚠️ {display_name}: 签到失败，详情已私聊本人")
 
         await self.put_kv_data("users", users)
+        await self._send_group_report(config, group_report_rows, success_users, failed_users)
         logger.info("自动签到执行完毕")
 
     async def _send_private_message(self, user_id: str, user_data: dict, message: str):
@@ -190,6 +300,51 @@ class SklandPlugin(Star):
             logger.info(f"已发送私聊消息给用户 {user_id}")
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
+
+    async def _send_group_report(self, config: dict, rows: list[str], success_users: int, failed_users: int):
+        """向配置的群聊发送自动签到汇总。"""
+        if not config.get("auto_sign_group_report_enabled", True):
+            return
+        if not rows:
+            logger.info("自动签到没有可汇报的用户，跳过群内汇报")
+            return
+
+        group_ids = self._normalize_group_ids(config.get("auto_sign_report_group_ids"))
+        if not group_ids:
+            group_ids = self._normalize_group_ids(config.get("allowed_group_ids", "759775061"))
+        if not group_ids:
+            logger.warning("未配置自动签到汇报群号，跳过群内汇报")
+            return
+
+        platform_id = str(config.get("auto_sign_report_platform_id") or "qq-test").strip()
+        if not platform_id:
+            logger.warning("未配置自动签到汇报平台 ID，跳过群内汇报")
+            return
+
+        total_users = success_users + failed_users
+        today = datetime.now().strftime("%Y-%m-%d")
+        tip = str(config.get("auto_sign_group_report_tip") or "").strip()
+        lines = [
+            f"森空岛自动签到完成（{today}）",
+            f"今日处理 {total_users} 人：成功 {success_users} 人，失败 {failed_users} 人",
+            "详细结果已私聊发送给各位绑定用户。",
+        ]
+        if config.get("auto_sign_group_report_show_details", False):
+            lines.extend(["", *rows])
+        if tip:
+            lines.extend(["", tip])
+
+        message_chain = MessageChain().message("\n".join(lines))
+        for group_id in sorted(group_ids):
+            session = f"{platform_id}:GroupMessage:{group_id}"
+            try:
+                sent = await self.context.send_message(session, message_chain)
+                if sent:
+                    logger.info(f"已向群 {group_id} 发送森空岛自动签到汇总")
+                else:
+                    logger.warning(f"森空岛自动签到汇总发送失败：未找到平台 {platform_id}")
+            except Exception as e:
+                logger.error(f"发送森空岛自动签到群汇报失败，群 {group_id}: {e}")
 
     # ==================== Helpers ====================
 
@@ -213,17 +368,60 @@ class SklandPlugin(Star):
                 lines.append(f"{r.game} 签到失败: {r.error}")
         return "\n".join(lines)
 
+    def _has_failed_result(self, results: list) -> bool:
+        if not results:
+            return True
+        return any(not (r.success or self._is_signed_today(r)) for r in results)
+
+    def _format_group_report_row(self, nickname: str, results: list) -> str:
+        if not results:
+            return f"⚠️ {nickname}: 没有绑定游戏"
+
+        parts = []
+        has_failed = False
+        for r in results:
+            ok = r.success or self._is_signed_today(r)
+            has_failed = has_failed or not ok
+            game_name = "方舟" if r.game == "明日方舟" else "终末" if r.game == "终末地" else r.game
+            parts.append(f"{game_name}{'✅' if ok else '⚠️'}")
+
+        prefix = "⚠️" if has_failed else "✅"
+        return f"{prefix} {nickname}: {' / '.join(parts)}"
+
     # ==================== Commands ====================
 
     @filter.command("skdhelp")
     async def skdhelp(self, event: AstrMessageEvent):
         """森空岛签到插件帮助"""
-        yield event.plain_result(
-            "森空岛签到插件帮助\n"
-            "1. 私聊机器人发送/skdlogin <token> 登录并签到\n"
-            "2. 私聊机器人发送/skdlogout 登出\n"
-            "3. /skd 查看签到状态"
-        )
+        group_id = getattr(event.message_obj, "group_id", None)
+        if group_id and not self._group_command_allowed(group_id):
+            self._log_blocked_group("skdhelp", group_id)
+            return
+
+        yield event.plain_result(self._get_help_text())
+
+    @filter.command("sdkhelp")
+    async def sdkhelp(self, event: AstrMessageEvent):
+        """兼容 skdhelp 的常见误拼写"""
+        group_id = getattr(event.message_obj, "group_id", None)
+        if group_id and not self._group_command_allowed(group_id):
+            self._log_blocked_group("sdkhelp", group_id)
+            return
+
+        yield event.plain_result(self._get_help_text())
+
+    @filter.command("sdk")
+    async def sdk(self, event: AstrMessageEvent, subcommand: str = ""):
+        """兼容 /sdk help 的常见误拼写"""
+        group_id = getattr(event.message_obj, "group_id", None)
+        if group_id and not self._group_command_allowed(group_id):
+            self._log_blocked_group("sdk", group_id)
+            return
+
+        if subcommand.strip().lower() in ("", "help", "帮助"):
+            yield event.plain_result(self._get_help_text())
+        else:
+            yield event.plain_result("你可能想输入 /skdhelp 查看森空岛签到使用指南。")
     
     # @filter.event_message_type(filter.EventMessageType.PRIVATE_MESSAGE)
     @filter.command("skdlogin")
@@ -248,13 +446,9 @@ class SklandPlugin(Star):
         token = token.strip()
         if not token:
             yield event.plain_result(
-                "请先获取token，方法如下:\n"
-                "1. 登录 鹰角网络通行证 后，打开 (https://web-api.hypergryph.com/account/info/hg) 记下 content 字段的值（推荐）。\n"
-                "   或者登录 森空岛网页版 (https://www.skland.com/) 后，\n"
-                "   打开 (https://web-api.skland.com/account/info/hg) 记下 content 字段的值。\n"
-                "   请复制类似这样的段落，content字段示例：N6QKb2C3d4A1b2C3d4，如果其中包含符号也一起复制\n"
-                "2. 使用方法:\n"
-                "   /skdlogin <content>")
+                "你还没有带上 content。\n\n"
+                f"{self._get_help_text()}"
+            )
             return
         yield event.plain_result("正在登录并签到，请稍候...")
         try:
@@ -300,6 +494,10 @@ class SklandPlugin(Star):
     @filter.command("skdusers")
     async def skdusers(self, event: AstrMessageEvent):
         """查询当前注册用户数量"""
+        group_id = getattr(event.message_obj, "group_id", None)
+        if group_id and not self._group_command_allowed(group_id):
+            self._log_blocked_group("skdusers", group_id)
+            return
         
         users = await self.get_kv_data("users", {})
         groups = await self.get_kv_data("groups", {})
@@ -355,12 +553,19 @@ class SklandPlugin(Star):
         yield event.plain_result("\n".join(lines))
 
     @filter.command("skd")
-    async def skd(self, event: AstrMessageEvent):
+    async def skd(self, event: AstrMessageEvent, subcommand: str = ""):
         """群聊显示群成员签到状态，私聊显示自己"""
         user_id = event.get_sender_id()
         user_name = event.get_sender_name()
         group_id = getattr(event.message_obj, "group_id", None)
         is_group = bool(group_id)
+        if is_group and not self._group_command_allowed(group_id):
+            self._log_blocked_group("skd", group_id)
+            return
+        if subcommand.strip().lower() in ("help", "帮助"):
+            yield event.plain_result(self._get_help_text())
+            return
+
         users_data = await self.get_kv_data("users", {})
 
         if is_group: # 群聊模式
